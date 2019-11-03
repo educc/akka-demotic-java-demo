@@ -5,7 +5,6 @@ import static org.junit.Assert.*;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.PoisonPill;
-import akka.actor.Terminated;
 import akka.testkit.javadsl.TestKit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;

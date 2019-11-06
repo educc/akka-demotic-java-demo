@@ -6,6 +6,9 @@ import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.PoisonPill;
 import akka.testkit.javadsl.TestKit;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.BeforeClass;
@@ -145,5 +148,62 @@ public class DeviceGroupTest {
           return null;
         });
 
+  }
+
+  @Test
+  public void testRequestAllTemperatures() {
+    TestKit probe = new TestKit(actorSystem);
+    ActorRef groupActor = actorSystem.actorOf(DeviceGroup.props("group"));
+
+    //register devices
+    groupActor.tell(new DeviceManager.RequestTrackDevice("group", "device1"),
+        probe.getRef());
+    probe.expectMsgClass(DeviceManager.DeviceRegistered.class);
+
+    groupActor.tell(new DeviceGroup.RequestAllTemperatures(1L), probe.getRef());
+    probe.expectMsgClass(DeviceGroup.RespondAllTemperatures.class);
+  }
+
+  @Test
+  public void testCollectTemperaturesFromAllActiveDevices() {
+    TestKit probe = new TestKit(actorSystem);
+    ActorRef groupActor = actorSystem.actorOf(DeviceGroup.props("group"));
+
+    //register devices
+    groupActor.tell(new DeviceManager.RequestTrackDevice("group", "device1"),
+        probe.getRef());
+    probe.expectMsgClass(DeviceManager.DeviceRegistered.class);
+    ActorRef deviceActor1 = probe.getLastSender();
+
+
+    groupActor.tell(new DeviceManager.RequestTrackDevice("group", "device2"),
+        probe.getRef());
+    probe.expectMsgClass(DeviceManager.DeviceRegistered.class);
+    ActorRef deviceActor2 = probe.getLastSender();
+
+    groupActor.tell(new DeviceManager.RequestTrackDevice("group", "device3"),
+        probe.getRef());
+    probe.expectMsgClass(DeviceManager.DeviceRegistered.class);
+
+    //record temperatures to devices
+    deviceActor1.tell(new Device.RecordTemperature(1L, 10d), probe.getRef());
+    assertEquals(1L, probe.expectMsgClass(Device.TemperatureRecorded.class).requestId);
+
+    deviceActor2.tell(new Device.RecordTemperature(2L, 20d), probe.getRef());
+    assertEquals(2L, probe.expectMsgClass(Device.TemperatureRecorded.class).requestId);
+
+    groupActor.tell(new DeviceGroup.RequestAllTemperatures(5L), probe.getRef());
+    DeviceGroup.RespondAllTemperatures response =
+        probe.expectMsgClass(DeviceGroup.RespondAllTemperatures.class);
+
+    assertEquals(5L, response.requestId);
+
+
+    Map<String, DeviceGroup.TemperatureReading> expectedTemperatures = new HashMap<>();
+    expectedTemperatures.put("device1", new DeviceGroup.Temperature(10d));
+    expectedTemperatures.put("device2", new DeviceGroup.Temperature(20d));
+    expectedTemperatures.put("device3", DeviceGroup.TemperatureNotAvailable.INSTANCE);
+
+    assertEquals(expectedTemperatures, response.temperatures);
   }
 }

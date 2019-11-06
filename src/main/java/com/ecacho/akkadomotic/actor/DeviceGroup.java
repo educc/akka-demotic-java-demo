@@ -5,10 +5,15 @@ import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
 import akka.actor.Terminated;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import lombok.AllArgsConstructor;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import scala.concurrent.duration.FiniteDuration;
 
 public class DeviceGroup extends AbstractLoggingActor {
 
@@ -47,6 +52,37 @@ public class DeviceGroup extends AbstractLoggingActor {
     final Set<String> list;
   }
 
+  @AllArgsConstructor
+  public static final class RequestAllTemperatures {
+    final long requestId;
+  }
+
+  @AllArgsConstructor
+  public static final class RespondAllTemperatures {
+    final long requestId;
+    final Map<String, TemperatureReading> temperatures;
+  }
+
+  public static interface TemperatureReading{}
+
+  @AllArgsConstructor
+  @EqualsAndHashCode
+  @ToString
+  public static final class Temperature implements TemperatureReading {
+    final double value;
+  }
+
+  public enum TemperatureNotAvailable implements TemperatureReading {
+    INSTANCE
+  }
+
+  public enum DeviceNotAvailable implements TemperatureReading {
+    INSTANCE
+  }
+
+  public enum DeviceTimeout implements TemperatureReading {
+    INSTANCE
+  }
 
 
   /*
@@ -77,7 +113,22 @@ public class DeviceGroup extends AbstractLoggingActor {
         .match(DeviceManager.RequestTrackDevice.class, this::onTrackDevice)
         .match(RequestDeviceList.class, this::onDeviceList)
         .match(Terminated.class, this::onTerminated)
+        .match(RequestAllTemperatures.class, this::onRequestAllTemperatures)
         .build();
+  }
+
+  private void onRequestAllTemperatures(RequestAllTemperatures rq) {
+    Map<ActorRef, String> map = Collections.unmodifiableMap(actorToDeviceId);
+
+    getContext()
+        .actorOf(
+            DeviceGroupQuery.props(
+                map,
+                rq.requestId,
+                getSender(),
+                new FiniteDuration(3, TimeUnit.SECONDS)
+            )
+        );
   }
 
   private void onTrackDevice(DeviceManager.RequestTrackDevice trackMsg) {
